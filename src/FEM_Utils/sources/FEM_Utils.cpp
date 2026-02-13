@@ -21,9 +21,11 @@ FEM_Utils<ITYPE, RTYPE>::FEM_Utils(ITYPE p, ITYPE nD)
 {
     pOrder = p;
     nDims = nD;
-    nNodes = 0;
-    nGausPts = 0;
-    xgp1D = nullptr;
+    nNodes = pow(pOrder + 1, nDims);
+    nGausPts = nNodes;
+    xgp1D = (RTYPE*)calloc((pOrder + 1), sizeof(RTYPE));
+    wgp1D = (RTYPE*)calloc((pOrder + 1), sizeof(RTYPE));
+    xgp = nullptr;
     wgp1D = nullptr;
     xgp = nullptr;
     wgp = nullptr;
