@@ -1,0 +1,54 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# Record the build options that were used
+set(convdiffBDF_USE_GPU @USE_GPU@)
+set(convdiffBDF_USE_HDF5 @USE_HDF5@)
+
+# Options related to GPU usage:
+if(convdiffBDF_USE_GPU)
+    set(convdiffBDF_USE_NVIDIA_GPU @USE_NVIDIA_GPU@)
+    set(convdiffBDF_USE_AMD_GPU @USE_AMD_GPU@)
+    if(convdiffBDF_USE_NVIDIA_GPU)
+        set(convdiffBDF_USE_NCCL @USE_NCCL@)
+    elseif(convdiffBDF_USE_AMD_GPU)
+        set(convdiffBDF_USE_RCCL @USE_RCCL@)
+    endif()
+endif()
+
+# Find MPI dependency (always required)
+find_dependency(MPI REQUIRED COMPONENTS C CXX Fortran)
+
+# Find CUDA if it was enabled during build
+if(convdiffBDF_USE_GPU)
+    if(convdiffBDF_USE_NVIDIA_GPU AND convdiffBDF_USE_AMD_GPU)
+        message(FATAL_ERROR "convdiffBDF package is corrupted: both NVIDIA and AMD GPU flags are set.")
+    elseif(NOT convdiffBDF_USE_NVIDIA_GPU AND NOT convdiffBDF_USE_AMD_GPU)
+        message(FATAL_ERROR "convdiffBDF package is corrupted: GPU support enabled but no vendor selected.")
+    endif()
+    if(convdiffBDF_USE_NVIDIA_GPU)
+        enable_language(CUDA)
+        find_dependency(CUDAToolkit REQUIRED)
+        if(convdiffBDF_USE_NCCL)
+            find_dependency(NCCL REQUIRED)
+        endif()
+    elseif(convdiffBDF_USE_AMD_GPU)
+        enable_language(HIP)
+        find_dependency(hip REQUIRED)
+        if(convdiffBDF_USE_RCCL)
+            find_dependency(rccl REQUIRED)
+        endif()
+    endif()
+endif()
+
+# Find HDF5 if it was enabled during build
+if(convdiffBDF_USE_HDF5)
+    find_dependency(HDF5 REQUIRED)
+endif()
+
+# Include the exported targets
+include("${CMAKE_CURRENT_LIST_DIR}/convdiffBDFTargets.cmake")
+
+# Verify all components are available
+check_required_components(convdiffBDF)

@@ -1,0 +1,134 @@
+# Set minimum CMake version
+cmake_minimum_required(VERSION 3.15)
+
+# Set project versions: major, minor and patch
+set(TEST_VERSION_MAJOR "0")
+set(TEST_VERSION_MINOR "0")
+set(TEST_VERSION_PATCH "0")
+set(TEST_VERSION "${TEST_VERSION_MAJOR}.${TEST_VERSION_MINOR}.${TEST_VERSION_PATCH}")
+
+## Set the project versions
+set(PROJECT_VERSION_MAJOR "25")
+set(PROJECT_VERSION_MINOR "12")
+set(PROJECT_VERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}")
+
+# Options
+option(UNIT_TESTING "Enable unit tests" ON)
+option(USE_GPU "Compile using GPU" ON)
+option(USE_HDF5 "Compile using HDF5" OFF)
+option(ENABLE_APPLICATIONS "Enable standalone applications" OFF)
+
+# Select GPU vendor
+if(USE_GPU)
+    option(USE_NVIDIA_GPU "Use NVIDIA GPU" ON)
+    option(USE_AMD_GPU "Use AMD GPU" OFF)
+    # Check that only one GPU vendor is selected
+    if(USE_NVIDIA_GPU AND USE_AMD_GPU)
+        message(FATAL_ERROR "Please select only one GPU vendor: either USE_NVIDIA_GPU or USE_AMD_GPU.")
+    elseif(NOT USE_NVIDIA_GPU AND NOT USE_AMD_GPU)
+        message(FATAL_ERROR "Please select a GPU vendor: either USE_NVIDIA_GPU or USE_AMD_GPU.")
+    endif()
+    # NCCL/RCCL support
+    if(USE_NVIDIA_GPU)
+        option(USE_NCCL "Enable NCCL support for multi-GPU communication (NVIDIA GPUs only)" OFF)
+    elseif(USE_AMD_GPU)
+        option(USE_RCCL "Enable RCCL support for multi-GPU communication (AMD GPUs only)" OFF)
+    endif()
+endif()
+
+# Folder with files configuring extra CMake options
+set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+
+# Set compilers to MPI wrappers
+set(ENV{CC} "mpicc")
+set(ENV{CXX} "mpicxx")
+set(ENV{FC} "mpif90")
+
+# Set project name, version and languages
+if(USE_GPU)
+    if(USE_NVIDIA_GPU)
+        project(convdiffBDF VERSION ${PROJECT_VERSION} LANGUAGES C CXX Fortran CUDA)
+    elseif(USE_AMD_GPU)
+        project(convdiffBDF VERSION ${PROJECT_VERSION} LANGUAGES C CXX Fortran HIP)
+    endif()
+else()
+    project(GLASs VERSION ${PROJECT_VERSION} LANGUAGES C CXX Fortran)
+endif()
+
+# Configure MPI module
+include(mpi)
+
+# Configure compiler options
+if(USE_GPU AND USE_NVIDIA_GPU)
+    include(gpu)
+endif()
+include(compilerOps)
+
+# Configure HDF5 module
+if(USE_HDF5)
+    include(hdf5)
+endif()
+
+# use, i.e. don't skip the full RPATH for the build tree
+set(CMAKE_SKIP_BUILD_RPATH FALSE)
+
+# when building, don't use the install RPATH already
+# (but later on when installing)
+set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
+
+set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+
+# add the automatically determined parts of the RPATH
+# which point to directories outside the build tree to the install RPATH
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+
+# the RPATH to be used when installing, but only if it's not a system directory
+list(FIND CMAKE_PLATFORM_IMPLICIT_LINK_DIRECTORIES "${CMAKE_INSTALL_PREFIX}/lib" isSystemDir)
+if("${isSystemDir}" STREQUAL "-1")
+    set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+endif("${isSystemDir}" STREQUAL "-1")
+
+# Build everything in src/ (this includes Libs and all sublibraries)
+add_subdirectory(src)
+
+# --------------------------------------------------------------------------
+# Install + Export convdiffBDF package
+# --------------------------------------------------------------------------
+include(CMakePackageConfigHelpers)
+
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/convdiffBDFConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/convdiffBDFConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/convdiffBDFConfig.cmake"
+    INSTALL_DESTINATION lib/cmake/convdiffBDF
+)
+
+# Export all sublibrary targets that were installed with EXPORT convdiffBDFTargets
+install(EXPORT convdiffBDFTargets
+    FILE convdiffBDFTargets.cmake
+    NAMESPACE convdiffBDF::
+    DESTINATION lib/cmake/convdiffBDF
+)
+
+install(
+    FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/convdiffBDFConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/convdiffBDFConfigVersion.cmake"
+    DESTINATION lib/cmake/convdiffBDF
+)
+
+# --------------------------------------------------------------------------
+# Applications and Tests (after package setup)
+# --------------------------------------------------------------------------
+
+# Enable testing
+if(UNIT_TESTING)
+    enable_testing()
+    add_subdirectory(Tests)
+endif()
+
